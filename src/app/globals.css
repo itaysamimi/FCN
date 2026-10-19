@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Components must use these (e.g. bg-surface, text-accent)
+ * and never raw hex values. The site is always dark.
+ */
+@theme {
+  --color-background: #09080d;
+  --color-surface: #13111a;
+  --color-surface-raised: #1c1926;
+  --color-border: #2a2538;
+  --color-text: #ece9f5;
+  --color-text-muted: #9a93ad;
+  --color-primary: #8b5cf6;
+  --color-accent: #c4b5fd;
+  --color-primary-dark: #5b21b6;
+  --color-danger: #ef4444;
+
+  --font-sans: var(--font-rubik), ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text);
+}
+
+::selection {
+  background-color: var(--color-primary-dark);
+  color: var(--color-text);
+}
