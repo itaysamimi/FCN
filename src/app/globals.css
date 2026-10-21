@@ -15,6 +15,7 @@
   --color-accent: #c4b5fd;
   --color-primary-dark: #5b21b6;
   --color-danger: #ef4444;
+  --color-warning: #facc15;
 
   --font-sans: var(--font-rubik), ui-sans-serif, system-ui, sans-serif;
 }

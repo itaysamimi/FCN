@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { FamilyMember } from "@/types/auth";
 import { InviteForm } from "./invite-form";
 import { ResendInviteButton } from "./resend-invite-button";
+import { StorageCard, type StorageOverview } from "./storage-card";
 
 export const metadata: Metadata = {
   title: "ניהול משפחה | FCN",
@@ -46,13 +47,53 @@ async function getFamilyMembers(): Promise<FamilyMember[]> {
   });
 }
 
+// Read with the admin's own client: RLS lets admins read r2_usage, and
+// storage_used_bytes() is callable by any signed-in user.
+async function getStorageOverview(): Promise<StorageOverview> {
+  const supabase = await createClient();
+  const now = new Date();
+  const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+
+  const [settingsResult, usedResult, usageResult] = await Promise.all([
+    supabase
+      .from("app_settings")
+      .select("storage_limit_bytes, class_a_limit, class_b_limit")
+      .eq("id", 1)
+      .single<{ storage_limit_bytes: number; class_a_limit: number; class_b_limit: number }>(),
+    supabase.rpc("storage_used_bytes"),
+    supabase
+      .from("r2_usage")
+      .select("class_a, class_b")
+      .eq("month", month)
+      .maybeSingle<{ class_a: number; class_b: number }>(),
+  ]);
+  if (settingsResult.error || usedResult.error || usageResult.error) {
+    throw new Error("Failed to load storage overview");
+  }
+
+  const settings = settingsResult.data;
+  return {
+    usedBytes: Number(usedResult.data ?? 0),
+    storageLimitBytes: Number(settings.storage_limit_bytes),
+    classA: { used: Number(usageResult.data?.class_a ?? 0), limit: Number(settings.class_a_limit) },
+    classB: { used: Number(usageResult.data?.class_b ?? 0), limit: Number(settings.class_b_limit) },
+    resetDate: new Intl.DateTimeFormat("he-IL", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(nextMonth),
+  };
+}
+
 export default async function AdminPage() {
   const user = await getCurrentUser();
   if (!user?.isAdmin) {
     notFound();
   }
 
-  const members = await getFamilyMembers();
+  const [members, storage] = await Promise.all([getFamilyMembers(), getStorageOverview()]);
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 py-8 sm:py-12">
@@ -73,6 +114,8 @@ export default async function AdminPage() {
         </p>
         <InviteForm />
       </section>
+
+      <StorageCard overview={storage} />
 
       <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
         <h2 className="mb-4 text-lg font-medium text-text">

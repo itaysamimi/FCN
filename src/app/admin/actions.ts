@@ -4,7 +4,9 @@ import { refresh } from "next/cache";
 import { GENERIC_ERROR, isEmailTakenError, isRateLimitError } from "@/lib/auth-errors";
 import { getCurrentUser } from "@/lib/auth";
 import { isValidEmail, readField } from "@/lib/forms";
+import { gbToBytes } from "@/lib/format";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import type { FormState } from "@/types/forms";
 import type { AuthError } from "@supabase/supabase-js";
 
@@ -76,4 +78,43 @@ export async function resendInvite(_prev: FormState, formData: FormData): Promis
   }
 
   return { status: "success", message: "ההזמנה נשלחה שוב" };
+}
+
+// Limits the admin can change from the storage card. The UI asks for
+// confirmation above the free tier; RLS also restricts the update to admins.
+const LIMIT_FIELDS = {
+  storage_limit_gb: { column: "storage_limit_bytes", min: 1, max: 100_000, toValue: gbToBytes },
+  class_a_limit: { column: "class_a_limit", min: 0, max: 1_000_000_000, toValue: (n: number) => n },
+  class_b_limit: { column: "class_b_limit", min: 0, max: 10_000_000_000, toValue: (n: number) => n },
+} as const;
+
+export async function updateStorageLimit(_prev: FormState, formData: FormData): Promise<FormState> {
+  const user = await getCurrentUser();
+  if (!user?.isAdmin) {
+    return NOT_ALLOWED;
+  }
+
+  const fieldName = readField(formData, "field");
+  if (!(fieldName in LIMIT_FIELDS)) {
+    return { status: "error", message: GENERIC_ERROR };
+  }
+  const field = LIMIT_FIELDS[fieldName as keyof typeof LIMIT_FIELDS];
+  const value = Number(readField(formData, "value"));
+  if (!Number.isInteger(value) || value < field.min || value > field.max) {
+    return { status: "error", message: "הערך לא תקין" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("app_settings")
+    .update({ [field.column]: field.toValue(value) })
+    .eq("id", 1)
+    .select("id");
+  if (error || !data?.length) {
+    console.error("app_settings update failed:", error);
+    return { status: "error", message: GENERIC_ERROR };
+  }
+
+  refresh();
+  return { status: "success", message: "נשמר" };
 }

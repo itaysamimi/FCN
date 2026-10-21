@@ -38,6 +38,12 @@ export async function updateSession(request: NextRequest) {
   const isSignedIn = Boolean(data?.claims);
   const { pathname } = request.nextUrl;
 
+  if (!isSignedIn && pathname.startsWith("/api/")) {
+    return NextResponse.json(
+      { error: { code: "unauthenticated", message: "צריך להתחבר מחדש" } },
+      { status: 401 },
+    );
+  }
   if (!isSignedIn && !isPublicPath(pathname)) {
     return redirectKeepingCookies(request, response, "/login");
   }
